@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package hyper;
+
+message Query {
+    int64 id = 1;
+    string questioner = 2;
+    string content = 3;
+}
+
+message Answer {
+    int64 id = 1;
+    string responder = 2;
+    string content = 3;
+}

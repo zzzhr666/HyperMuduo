@@ -1,0 +1,58 @@
+# Build directories and generated files
+cmake-build-*/
+build/
+out/
+dist/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+
+# Object, library, binary, and debug artifacts
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.pdb
+*.dSYM/
+*.idb
+*.ilk
+*.map
+
+# C/C++ dependency and debug files
+*.d
+*.gcno
+*.gcda
+*.gcov
+*.prof
+*.profraw
+*.profdata
+
+# IDE/editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local tooling/runtime folders
+.cursor/
+.cache/
+.tmp/
+tmp/
+
+# Logs
+*.log
