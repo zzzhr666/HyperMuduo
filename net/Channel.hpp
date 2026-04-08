@@ -11,6 +11,11 @@ namespace hyperMuduo::net {
         using EventCallback = std::function<void()>;
         static constexpr int NOT_FILL = -1;
 
+        Channel(const Channel&) = delete;
+        Channel& operator=(const Channel&) = delete;
+        Channel(Channel&&) = delete;
+        Channel& operator=(Channel&&) = delete;
+
         Channel(EventLoop& loop, int fd);
 
         void handleEvent();

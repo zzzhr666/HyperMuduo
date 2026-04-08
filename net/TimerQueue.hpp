@@ -26,6 +26,11 @@ namespace hyperMuduo::net {
 
     class TimerQueue {
     public:
+        TimerQueue(const TimerQueue&) = delete;
+        TimerQueue& operator=(const TimerQueue&) = delete;
+        TimerQueue(TimerQueue&&) = delete;
+        TimerQueue& operator=(TimerQueue&&) = delete;
+
         explicit TimerQueue(EventLoop& loop);
 
         ~TimerQueue();

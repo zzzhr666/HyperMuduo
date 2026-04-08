@@ -30,6 +30,13 @@ set(NET_SOURCE
         net/Timer.cpp
         net/TimerQueue.cpp
         net/TimerQueue.hpp
+        net/EventLoopThread.cpp
+        net/Acceptor.cpp
+        net/Socket.cpp
+        net/Socket.hpp
+        net/InetAddress.cpp
+        net/InetAddress.hpp
+
 )
 
 set(PROTO_SOURCE
@@ -61,9 +68,5 @@ target_link_libraries(hyper_muduo
 )
 
 
-add_executable(simpletest
-        main.cpp
-)
-target_link_libraries(simpletest PRIVATE hyper_muduo)
 
 add_subdirectory(test)

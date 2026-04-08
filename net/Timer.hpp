@@ -10,6 +10,12 @@ namespace hyperMuduo::net {
     public:
         using CallBack = std::function<void()>;
         using TimePoint = std::chrono::steady_clock::time_point;
+
+        Timer(const Timer&) = delete;
+        Timer& operator=(const Timer&) = delete;
+        Timer(Timer&&) = default;
+        Timer& operator=(Timer&&) = default;
+
         Timer(CallBack cb,TimePoint expiration_time,std::chrono::milliseconds interval);
 
         TimePoint expiration() const {
