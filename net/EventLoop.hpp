@@ -62,7 +62,7 @@ namespace hyperMuduo::net {
     private:
         static constexpr std::chrono::milliseconds kPollTime{10};
         using ChannelList = std::vector<Channel*>;
-        using ChannelMap = std::unordered_map<int, std::unique_ptr<Channel>>;
+        
 
         void wakeup();
 

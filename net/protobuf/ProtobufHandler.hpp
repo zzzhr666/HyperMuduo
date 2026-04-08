@@ -8,6 +8,10 @@ namespace hyperMuduo::net {
 
         class ProtobufHandler {
         public:
+            ProtobufHandler(const ProtobufHandler&) = delete;
+            ProtobufHandler& operator=(const ProtobufHandler&) = delete;
+            ProtobufHandler(ProtobufHandler&&) = default;
+            ProtobufHandler& operator=(ProtobufHandler&&) = default;
 
             explicit ProtobufHandler(std::function<void(const TcpConnectionPtr&,const MessagePtr&,TimePoint)> default_cb);
 

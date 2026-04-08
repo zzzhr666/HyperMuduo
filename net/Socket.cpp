@@ -1,0 +1,90 @@
+#include "Socket.hpp"
+
+#include <system_error>
+#include <unistd.h>
+#include <spdlog/spdlog.h>
+#include <sys/socket.h>
+
+hyperMuduo::net::Socket::Socket()
+    : socket_fd_(socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,IPPROTO_TCP)) {
+    if (socket_fd_ == -1) {
+        SPDLOG_CRITICAL("Unable to create new Socket,errno msg:{}", std::system_category().message(errno));
+        std::abort();
+    }
+}
+
+hyperMuduo::net::Socket::Socket(int sock_fd)
+    : socket_fd_(sock_fd) {
+}
+
+hyperMuduo::net::Socket::Socket(Socket&& other) noexcept
+    : socket_fd_(other.getFd()) {
+    other.invalidate();
+}
+
+hyperMuduo::net::Socket& hyperMuduo::net::Socket::operator=(Socket&& other) noexcept {
+    if (this != &other) {
+        if (socket_fd_ != INVALID_FD) {
+            close(socket_fd_);
+        }
+        socket_fd_ = other.getFd();
+        other.invalidate();
+    }
+    return *this;
+}
+
+void hyperMuduo::net::Socket::invalidate() {
+    socket_fd_ = INVALID_FD;
+}
+
+hyperMuduo::net::Socket hyperMuduo::net::Socket::accept(InetAddress& addr) {
+    sockaddr_in* addr_in = addr.getSockAddrInMutable();
+    socklen_t length = sizeof(sockaddr_in);
+    int conn_fd = accept4(socket_fd_, reinterpret_cast<sockaddr*>(addr_in),&length, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if (conn_fd >= 0) {
+        return Socket(conn_fd);
+    }
+
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        SPDLOG_ERROR("socket accept error: {}", std::system_category().message(errno));
+    }
+    return Socket{INVALID_FD};
+}
+
+void hyperMuduo::net::Socket::bindAddress(const InetAddress& addr) {
+    int ret = ::bind(socket_fd_, reinterpret_cast<const sockaddr*>(addr.getSockAddrIn()), sizeof(sockaddr_in));
+    if (ret == -1) {
+        SPDLOG_CRITICAL("Failed to bind with {},errno msg:{}", addr.toIpPort(), std::system_category().message(errno));
+        std::abort();
+    }
+}
+
+void hyperMuduo::net::Socket::listen() {
+    int ret = ::listen(socket_fd_,SOMAXCONN);
+    if (ret == -1) {
+        SPDLOG_CRITICAL("Listen failed ,errno msg:{} ", std::system_category().message(errno));
+        std::abort();
+    }
+}
+
+void hyperMuduo::net::Socket::setReuseAddr() {
+    int optval = 1;
+    ::setsockopt(socket_fd_,SOL_SOCKET,SO_REUSEADDR, &optval, sizeof(int));
+}
+
+void hyperMuduo::net::Socket::setReusePort() {
+    int optval = 1;
+    ::setsockopt(socket_fd_,SOL_SOCKET,SO_REUSEPORT, &optval, sizeof(int));
+}
+
+void hyperMuduo::net::Socket::setKeepAlive() {
+    int optval = 1;
+    ::setsockopt(socket_fd_,SOL_SOCKET,SO_KEEPALIVE, &optval, sizeof(int));
+}
+
+
+hyperMuduo::net::Socket::~Socket() {
+    if (socket_fd_ != INVALID_FD) {
+        close(socket_fd_);
+    }
+}

@@ -1,0 +1,50 @@
+#pragma once
+
+#include "InetAddress.hpp"
+
+namespace hyperMuduo::net {
+
+    class Socket {
+    public:
+        static constexpr int INVALID_FD = -1;
+
+        Socket();
+
+        explicit Socket(int sock_fd); //接管已有的fd;
+
+        Socket(const Socket&) = delete;
+
+        Socket& operator=(const Socket&) = delete;
+
+        Socket(Socket&& other) noexcept;
+
+        Socket& operator=(Socket&& other) noexcept;
+
+        int getFd() const {
+            return socket_fd_;
+        }
+
+        void invalidate();
+
+        bool valid()const {
+            return socket_fd_ != INVALID_FD;
+        }
+
+        Socket accept(InetAddress& addr);
+
+        void bindAddress(const InetAddress& addr);
+
+        void listen();
+
+        void setReuseAddr();
+
+        void setReusePort();
+
+        void setKeepAlive();
+
+        ~Socket();
+
+    private:
+        int socket_fd_;
+    };
+}

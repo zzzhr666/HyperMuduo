@@ -7,6 +7,10 @@ add_executable(HyperMuduoGTests
     test_event_loop.cpp
     test_timer.cpp
     test_timerqueue.cpp
+    test_eventloopthread.cpp
+    test_inetaddress.cpp
+    test_socket.cpp
+    test_acceptor.cpp
 )
 
 target_link_libraries(HyperMuduoGTests
