@@ -47,6 +47,8 @@ namespace hyperMuduo::net {
 
         void hasWritten(size_t len);
 
+        void swap(Buffer& other);
+
         //网络IO
         ssize_t readFd(int fd, int* savedErrno);
 

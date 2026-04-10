@@ -48,8 +48,9 @@ HyperMuduo/
 │   └── test.proto
 ├── test/                           # 单元测试（GoogleTest）
 │   ├── CMakeLists.txt
-│   ├── test_buffer.cpp             # Buffer 测试
-│   ├── test_codec.cpp              # Codec 测试
+│   ├── README.md                   # 测试说明文档
+│   ├── test_buffer.cpp             # Buffer 基础测试
+│   ├── test_codec.cpp              # Codec 编解码测试
 │   ├── test_protobuf.cpp           # Protobuf 链路测试
 │   ├── test_event_loop.cpp         # EventLoop 测试
 │   ├── test_timer.cpp              # Timer 测试
@@ -57,12 +58,18 @@ HyperMuduo/
 │   ├── test_eventloopthread.cpp    # EventLoopThread 测试
 │   ├── test_inetaddress.cpp        # InetAddress 测试
 │   ├── test_socket.cpp             # Socket 测试
-│   └── test_acceptor.cpp           # Acceptor 测试
+│   ├── test_acceptor.cpp           # Acceptor 测试
+│   ├── test_tcpserver.cpp          # TcpServer 基础集成测试
+│   ├── test_tcpserver_advanced.cpp # TcpServer 高级场景测试
+│   ├── test_tcpconnection.cpp      # TcpConnection 生命周期测试
+│   ├── test_buffer_integration.cpp # Buffer 网络IO集成测试
+│   ├── test_channel.cpp            # Channel 事件管理测试
+│   └── test_protobuf_handler.cpp   # ProtobufHandler 完整流程测试
 ├── CMakeLists.txt                  # 构建配置
 └── README.md                       # 项目文档
 ```
 
-**测试覆盖**：55个测试，覆盖 Buffer、Codec、Protobuf、EventLoop、Timer、TimerQueue、EventLoopThread、InetAddress、Socket、Acceptor
+**测试覆盖**：89 个测试，覆盖 16 个测试套件，包括 Buffer、Codec、Protobuf、EventLoop、Timer、TimerQueue、EventLoopThread、InetAddress、Socket、Acceptor、TcpServer（基础+高级）、TcpConnection、Channel、ProtobufHandler
 
 ---
 
@@ -166,10 +173,11 @@ Buffer 整体结构与原版高度一致（读写游标 + prepend 区 + `readv` 
 
 | 维度 | 原版 muduo | HyperMuduo |
 |------|-----------|------------|
-| 输出缓冲 | `Buffer outputBuffer_`（直接成员） | `std::unique_ptr<Buffer>`（延迟初始化，按需分配） |
+| 输出缓冲 | `Buffer outputBuffer_`（直接成员） | `std::unique_ptr<Buffer>`（构造时即初始化） |
+| 输入缓冲 | `Buffer inputBuffer_`（直接成员） | `std::unique_ptr<Buffer>`（构造时即初始化） |
 | 上下文存储 | `boost::any` | `std::any` |
-| 状态机 | 完整的 `kConnecting/kConnected/...` | 待实现（TODO） |
-| `Send()` / `Shutdown()` | 完整实现 | 待实现（TODO） |
+| 状态机 | 完整的 `kConnecting/kConnected/...` | 已实现完整状态机 |
+| `Send()` / `Shutdown()` | 完整实现 | 已实现完整路径 |
 
 ### 8. Protobuf 编解码链路
 
@@ -299,12 +307,25 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 
 #### C3. TcpConnection
 
-- [x] 输出缓冲按需初始化（`outputBuffer()`）
+- [x] 输出缓冲按需初始化（`outputBuffer()`）→ 改为构造时即初始化
+- [x] 输入缓冲构造时即初始化（`receive_buffer_`）
 - [x] 连接上下文（`std::any`）读写接口
-- [ ] 明确连接状态机（Connecting / Connected / Disconnecting / Disconnected）
-- [ ] 实现 `Send()` 主路径（线程切换 + 发送策略）
-- [ ] 实现 `Shutdown()` 半关闭流程
-- [ ] 绑定 `Channel` 事件回调（读 / 写 / 关闭 / 错误）
+- [x] 明确连接状态机（Connecting / Connected / Disconnecting / Disconnected）
+- [x] 实现 `Send()` 主路径（线程切换 + 发送策略）
+- [x] 实现 `Shutdown()` 半关闭流程
+- [x] 绑定 `Channel` 事件回调（读 / 写 / 关闭 / 错误）
+- [x] 配套单测（5 个测试，覆盖状态转换、同步/异步发送、关闭、Context）
+
+#### C4. TcpServer
+
+- [x] 组合 `Acceptor` 管理监听与连接生命周期
+- [x] 自动创建 `TcpConnection` 并注册回调
+- [x] 连接建立时调用 `connectionEstablished()`
+- [x] 连接断开时自动清理并调用 `connectionDestroyed()`
+- [x] 消息回调透传（`setMessageCallback`）
+- [x] 连接回调（`setConnectionCallback`）
+- [x] 基础集成测试（5 个测试：启停、回声服务、多连接、回调触发、数据接收）
+- [x] 高级场景测试（6 个测试：聊天室广播、命令响应服务器、大数据流、文件传输、分片消息组装、连接数限制）
 
 ### D. Protobuf 编解码链路
 
@@ -338,10 +359,12 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 
 ## 下一步计划
 
-1. 引入 `TcpServer` 抽象，组合 `Acceptor` 与 `EventLoopThreadPool`
-2. 打通 `TcpConnection` 的 `Send()` / 读写回调 / 半关闭完整路径
-3. 搭建最小 Echo Server 示例
-4. 将 Poller 升级为 `epoll` 实现
+1. 将 Poller 升级为 `epoll` 实现
+2. 增加 EventLoopThreadPool 支持多线程 Reactor
+3. 搭建最小 Echo Server 示例程序
+4. 增加 CI/CD 流程（构建检查 + 自动化测试）
+5. 增加静态检查（`clang-tidy`）
+6. 编写 Reactor 流程图与架构文档
 
 ## 致谢
 
