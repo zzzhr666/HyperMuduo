@@ -39,7 +39,7 @@ void hyperMuduo::net::TcpClient::stop() {
 
 
 hyperMuduo::net::TcpClient::~TcpClient() {
-    SPDLOG_INFO("TcpClient::~TcpClient[{}] - connector {}", name_, fmt::ptr(connector_.get()));
+    SPDLOG_DEBUG("TcpClient::~TcpClient[{}] - connector {}", name_, fmt::ptr(connector_.get()));
     TcpConnectionPtr conn;
 
     //lock scope
@@ -52,7 +52,7 @@ hyperMuduo::net::TcpClient::~TcpClient() {
         auto& loop = conn->getLoop();
         loop.runInLoop([conn]() {
             conn->setCloseCallback([](const TcpConnectionPtr&) {
-                SPDLOG_INFO("TcpClient connection closed after client destruction");
+                SPDLOG_DEBUG("TcpClient connection closed after client destruction");
 
             });
             conn->connectionDestroyed();
@@ -67,7 +67,7 @@ void hyperMuduo::net::TcpClient::onConnection(Socket socket) {
     std::string name = name_ + "#" + std::to_string(next_conn_id_.fetch_add(1));
     auto local_addr = socket.getLocalAddress();
     auto peer_addr = socket.getPeerAddress();
-    SPDLOG_INFO("TcpClient::onConnection[{}] connected to {}", name, local_addr.toIpPort());
+    SPDLOG_DEBUG("TcpClient::onConnection[{}] connected to {}", name, local_addr.toIpPort());
     auto conn = std::make_shared<TcpConnection>(loop_, std::move(name), std::move(socket), local_addr, peer_addr);
     if (connection_callback_) {
         conn->setConnectionCallback(connection_callback_);

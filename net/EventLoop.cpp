@@ -68,7 +68,7 @@ namespace {
             SPDLOG_INFO("Using poll poller(forced by env).");
             return std::make_unique<hyperMuduo::net::Poller>(loop);
         }
-        SPDLOG_INFO("Using epoll poller (default on Linux)");
+        SPDLOG_DEBUG("Using epoll poller (default on Linux)");
         return std::make_unique<hyperMuduo::net::Epoller>(loop);
 #else
         SPDLOG_INFO("Using poll poller(default on platform other than Linux)");
@@ -88,7 +88,7 @@ hyperMuduo::net::EventLoop::EventLoop()
       timer_queue_(std::make_unique<TimerQueue>(*this)),
       wakeup_fd_(create_eventfd()),
       wakeup_channel_(std::make_unique<Channel>(*this, wakeup_fd_)) {
-    SPDLOG_INFO("Eventloop created {} in thread {}", fmt::ptr(this), thread_id_);
+    SPDLOG_DEBUG("Eventloop created {} in thread {}", fmt::ptr(this), thread_id_);
     if (t_current_thread_loop == nullptr) {
         t_current_thread_loop = this;
     } else {

@@ -100,7 +100,7 @@ void hyperMuduo::net::Connector::handleWritable() {
     
     state_ = State::Connected;
     resetChannel();
-    SPDLOG_INFO("Connector::handleWritable - Connection established");
+    SPDLOG_DEBUG("Connector::handleWritable - Connection established");
 
     if (new_connection_callback_) {
         new_connection_callback_(std::move(*socket_));
