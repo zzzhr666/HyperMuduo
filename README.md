@@ -16,6 +16,85 @@ C++ 网络库雏形。
 - 避免使用 `std::bind`，优先使用 lambda 与清晰的回调封装
 - 强调 RAII、类型安全、明确所有权与生命周期管理
 
+---
+
+## Quick Start
+
+### 1. 安装依赖
+
+HyperMuduo 依赖以下系统库（可通过包管理器安装）：
+
+| 依赖库 | 用途 |
+|--------|------|
+| **spdlog** | 日志系统 |
+| **protobuf** | 消息序列化 (libprotobuf-dev) |
+| **zlib** | Adler-32 校验算法 (zlib1g-dev) |
+| **GoogleTest** | 单元测试框架 (libgtest-dev) |
+
+```bash
+# Ubuntu/Debian 示例
+sudo apt install libspdlog-dev libprotobuf-dev protobuf-compiler zlib1g-dev libgtest-dev build-essential cmake
+```
+
+### 2. 编译项目
+
+```bash
+cmake -S . -B build
+cmake --build build
+```
+
+### 3. 编写你的第一个 Echo Server
+
+HyperMuduo 的使用方式与 muduo 高度一致。以下是一个最小 Echo Server 示例：
+
+```cpp
+#include "net/EventLoop.hpp"
+#include "net/TcpServer.hpp"
+#include "spdlog/spdlog.h"
+
+using namespace hyperMuduo::net;
+
+int main() {
+    EventLoop loop;
+    InetAddress addr(8888);
+    TcpServer server(loop, addr, "EchoServer");
+
+    // 设置消息回调：收到什么就发回什么
+    server.setMessageCallback([](const TcpConnectionPtr& conn, Buffer& buf, std::chrono::system_clock::time_point) {
+        std::string msg = buf.retrieveAllAsString();
+        SPDLOG_INFO("Received: {}", msg);
+        conn->send(msg); // Echo back
+    });
+
+    server.start();
+    SPDLOG_INFO("EchoServer started on 8888...");
+    loop.loop();
+    return 0;
+}
+```
+
+### 4. 测试连接
+
+启动服务器后，使用 `nc` (netcat) 连接测试：
+
+```bash
+nc 127.0.0.1 8888
+```
+
+### 5. 运行单元测试
+
+验证所有核心功能的正确性：
+
+```bash
+# 运行所有测试
+./build/test/HyperMuduoAllTests
+
+# 使用 CTest
+ctest --test-dir build
+```
+
+---
+
 ## 当前项目结构
 
 ```

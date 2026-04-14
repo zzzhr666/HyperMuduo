@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [ "feature/dev" ]
+  pull_request:
+    branches: [ "feature/dev" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libspdlog-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          zlib1g-dev \
+          libgtest-dev
+
+    - name: Build
+      run: |
+        cmake -S . -B build
+        cmake --build build
+
+    - name: Test
+      run: |
+        cd build
+        ctest --output-on-failure
