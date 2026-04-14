@@ -10,10 +10,10 @@ hyperMuduo::net::TcpClient::TcpClient(EventLoop& loop, const InetAddress& server
       name_(name),
       address_(server_addr),
       connector_(std::make_shared<Connector>(loop, address_)),
+      high_water_mark_(64 * 1024 * 1024),
       next_conn_id_(0),
       retry_(false),
-      connect_(false),
-high_water_mark_(64 * 1024 * 1024){
+connect_(false){
     connector_->setNewConnectionCallback([this](Socket socket) {
         onConnection(std::move(socket));
     });

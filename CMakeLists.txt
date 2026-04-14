@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.12)
 project(HyperMuduo)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -70,3 +70,4 @@ target_link_libraries(hyper_muduo
 
 
 add_subdirectory(test)
+add_subdirectory(benchmark)

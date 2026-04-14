@@ -139,18 +139,18 @@ void hyperMuduo::net::EventLoop::quit() {
 
 hyperMuduo::net::TimerId hyperMuduo::net::EventLoop::runAt(std::chrono::steady_clock::time_point tp,
                                                            std::function<void()> callback) {
-    return timer_queue_->addTimer(callback, tp, {});
+    return timer_queue_->addTimer(std::move(callback), tp, {});
 }
 
 hyperMuduo::net::TimerId hyperMuduo::net::EventLoop::runEvery(std::chrono::milliseconds us,
                                                               std::function<void()> callback) {
-    return timer_queue_->addTimer(callback, std::chrono::steady_clock::now() + us, us);
+    return timer_queue_->addTimer(std::move(callback), std::chrono::steady_clock::now() + us, us);
 }
 
 
 hyperMuduo::net::TimerId hyperMuduo::net::EventLoop::runAfter(std::chrono::milliseconds us,
                                                               std::function<void()> callback) {
-    return timer_queue_->addTimer(callback, std::chrono::steady_clock::now() + us, {});
+    return timer_queue_->addTimer(std::move(callback), std::chrono::steady_clock::now() + us, {});
 }
 
 void hyperMuduo::net::EventLoop::cancelTimer(TimerId timerId) {
