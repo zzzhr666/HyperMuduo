@@ -1,17 +1,18 @@
 # HyperMuduo
 
 一个用于学习与实践的仿 muduo 网络库项目。
-这个仓库主要记录我在阅读《Linux 多线程服务端编程：使用 muduo C++ 网络库》过程中的手写实现与思考，目标是在理解设计思想的同时，逐步完成一个可运行、可扩展的现代 C++ 网络库雏形。
+这个仓库主要记录我在阅读《Linux 多线程服务端编程：使用 muduo C++ 网络库》过程中的手写实现与思考，目标是在理解设计思想的同时，逐步完成一个可运行、可扩展的现代
+C++ 网络库雏形。
 
 ## 项目目标
 
-- 以 muduo 的核心设计为参考，按模块逐步实现网络库能力
+- 以 muduo 的核心设计为参考，实现一个完整的现代 C++ 网络库
 - 用工程化方式沉淀学习过程，而不是只停留在读书和笔记
-- 优先保证代码清晰、可验证、可迭代，便于后续持续重构
+- 代码清晰、可验证，所有核心功能均配备单元测试
 
 ## 技术取向
 
-- 全面拥抱现代 C++（以 C++17/20 风格编写），不依赖 Boost
+- 全面拥抱现代 C++（以 C++17/20 风格编写），不依赖 Boost 库
 - 避免使用 `std::bind`，优先使用 lambda 与清晰的回调封装
 - 强调 RAII、类型安全、明确所有权与生命周期管理
 
@@ -26,7 +27,9 @@ HyperMuduo/
 │   ├── Reactor 系统
 │   │   ├── EventLoop.hpp/cpp       # 事件循环（主反应器）
 │   │   ├── Channel.hpp/cpp         # 文件描述符事件封装
-│   │   └── Poller.hpp/cpp          # IO 多路复用（poll 版本）
+│   │   ├── PollerBase.hpp          # IO 多路复用抽象基类
+│   │   ├── Poller.hpp/cpp          # IO 多路复用（poll 版本）
+│   │   └── Epoller.hpp/cpp         # IO 多路复用（epoll 版本，Linux 默认）
 │   ├── 网络基础组件
 │   │   ├── InetAddress.hpp/cpp     # sockaddr_in 轻量封装
 │   │   └── Socket.hpp/cpp          # RAII Socket 封装
@@ -72,7 +75,87 @@ HyperMuduo/
 └── README.md                       # 项目文档
 ```
 
-**测试覆盖**：110 个测试，覆盖 18 个测试套件，包括 Buffer、Codec、Protobuf、EventLoop、Timer、TimerQueue、EventLoopThread、InetAddress、Socket、Acceptor、TcpServer（基础+高级+多线程）、TcpConnection、TcpClient、Channel、ProtobufHandler
+**测试覆盖**：110 个测试，覆盖 18 个测试套件，包括
+Buffer、Codec、Protobuf、EventLoop、Timer、TimerQueue、EventLoopThread、InetAddress、Socket、Acceptor、TcpServer（基础+高级+多线程）、TcpConnection、TcpClient、Channel、ProtobufHandler
+
+---
+
+## 外部依赖
+
+| 依赖库          | 用途    | 说明                                                  |
+|--------------|-------|-----------------------------------------------------|
+| **spdlog**   | 日志系统  | 高性能 C++ 日志库，替代手写 Logging 类                          |
+| **protobuf** | 消息序列化 | Google Protocol Buffers，用于结构化消息编解码                  |
+| **zlib**     | 校验计算  | 提供 Adler-32 算法，用于 Protobuf 编解码链路的校验和                |
+| **pthreads** | 线程支持  | Linux 线程库，用于 `std::thread`、`std::mutex` 等标准库组件的底层实现 |
+
+所有依赖均可通过包管理器安装（如 `apt`, `pacman`, `yum` 等）。
+
+---
+
+## 架构概览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Application Layer                        │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────────┐   │
+│  │ TcpServer   │  │  TcpClient   │  │  ProtobufHandler      │   │
+│  │             │  │              │  │                       │   │
+│  └──────┬──────┘  └──────┬───────┘  └───────────┬───────────┘   │
+└─────────┼────────────────┼──────────────────────┼───────────────┘
+          │                │                      │
+┌─────────┼────────────────┼──────────────────────┼──────────────┐
+│         ▼                ▼                      ▼              │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                   TcpConnection                          │  │
+│  │  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐   │  │
+│  │  │Input Buffer │  │Output Buffer │  │   State Machine│   │  │
+│  │  └─────────────┘  └──────────────┘  └────────────────┘   │  │
+│  └────────────────────────┬─────────────────────────────────┘  │
+│                           │                                    │
+│  ┌────────────────────────┴─────────────────────────────────┐  │
+│  │                     Channel                              │  │
+│  │              (fd + events + callbacks)                   │  │
+│  └────────────────────────┬─────────────────────────────────┘  │
+│                           │                                    │
+│  ┌────────────────────────┴─────────────────────────────────┐  │
+│  │                     PollerBase                           │  │
+│  │           ┌─────────────┬─────────────┐                  │  │
+│  │           ▼             ▼             ▼                  │  │
+│  │     ┌────────┐    ┌────────┐    ┌────────┐               │  │
+│  │     │ Poller │    │Epoller │    │  ...   │               │  │
+│  │     │ (poll) │    │(epoll) │    │        │               │  │
+│  │     └────────┘    └────────┘    └────────┘               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                           │                                    │
+│  ┌────────────────────────┴─────────────────────────────────┐  │
+│  │                     EventLoop                            │  │
+│  │  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐   │  │
+│  │  │  TimerQueue │  │  Wakeup fd   │  │  Task Queue    │   │  │
+│  │  └─────────────┘  └──────────────┘  └────────────────┘   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                           │                                    │
+└───────────────────────────┼────────────────────────────────────┘
+                            │
+              ┌─────────────┴─────────────┐
+              │         OS Kernel         │
+              │  (epoll/poll + timerfd)   │
+              └───────────────────────────┘
+```
+
+### 组件说明
+
+| 组件                        | 职责                                           |
+|---------------------------|----------------------------------------------|
+| **EventLoop**             | Reactor 核心，负责事件循环、定时器调度、跨线程任务投递              |
+| **PollerBase**            | IO 多路复用抽象基类，定义统一接口                           |
+| **Poller / Epoller**      | 具体实现，支持 poll/epoll 两种模式，可运行时切换               |
+| **Channel**               | 封装 fd 及其关注的事件、回调函数                           |
+| **TcpConnection**         | TCP 连接抽象，管理输入/输出缓冲区、连接状态机                    |
+| **TcpServer / TcpClient** | 高层封装，管理连接生命周期、回调配置                           |
+| **TimerQueue**            | 基于 `timerfd` + 最小堆的定时器系统                     |
+| **Buffer**                | 应用层收发缓冲区，支持 `readv`/`writev`、自动扩容、prepend 区域 |
+| **ProtobufHandler**       | 组合 Codec + Dispatcher，实现 Protobuf 消息的编解码与分发  |
 
 ---
 
@@ -82,31 +165,33 @@ HyperMuduo/
 
 ### 概览：核心差异速查
 
-| 特性 | 原版 muduo | HyperMuduo | 理由 |
-|------|-----------|------------|------|
-| 定时器数据结构 | `std::set`（红黑树） | `priority_queue`（最小堆）+ 惰性删除 | 缓存友好，取消操作少 |
-| Channel 查找 | `std::map<int, Channel*>` | `std::unordered_map<int, Channel*>` | O(1) 复杂度 |
-| 跨线程状态标志 | `bool` + 锁保护 | `std::atomic<bool>` | 明确原子语义 |
-| 智能指针 | `boost::scoped_ptr/shared_ptr` | `std::unique_ptr/shared_ptr` | 现代 C++ 标准库 |
-| 回调注册 | `boost::bind` | Lambda 捕获 | 更清晰的捕获语义 |
-| Buffer 双缓冲临时区 | 裸 `char[]` 数组 | `std::array<char, 65536>` | 类型安全 |
-| Protobuf 链路 | `ProtobufCodec` 单体 | `Codec` + `Dispatcher` + `ProtobufHandler` 拆分 | 职责单一，易测试 |
+| 特性            | 原版 muduo                       | HyperMuduo                                    | 理由         |
+|---------------|--------------------------------|-----------------------------------------------|------------|
+| 定时器数据结构       | `std::set`（红黑树）                | `priority_queue`（最小堆）+ 惰性删除                   | 缓存友好，取消操作少 |
+| Channel 查找    | `std::map<int, Channel*>`      | `std::unordered_map<int, Channel*>`           | O(1) 复杂度   |
+| 跨线程状态标志       | `bool` + 锁保护                   | `std::atomic<bool>`                           | 明确原子语义     |
+| 智能指针          | `boost::scoped_ptr/shared_ptr` | `std::unique_ptr/shared_ptr`                  | 现代 C++ 标准库 |
+| 回调注册          | `boost::bind`                  | Lambda 捕获                                     | 更清晰的捕获语义   |
+| Buffer 双缓冲临时区 | 裸 `char[]` 数组                  | `std::array<char, 65536>`                     | 类型安全       |
+| Protobuf 链路   | `ProtobufCodec` 单体             | `Codec` + `Dispatcher` + `ProtobufHandler` 拆分 | 职责单一，易测试   |
 
 ---
 
 ### 1. 现代 C++ 标准库与第三方库替代
 
-原版 muduo 编写于 C++11 初期，许多基础设施需要手写实现。HyperMuduo 充分利用 C++17/20 标准库的成熟特性以及优秀的第三方库，替代了原本需要手写的基础组件，使代码更简洁、更安全、更易维护。
+原版 muduo 编写于 C++11 初期，许多基础设施需要手写实现。HyperMuduo 充分利用 C++17/20
+标准库的成熟特性以及优秀的第三方库，替代了原本需要手写的基础组件，使代码更简洁、更安全、更易维护。
 
 #### 1.1 时间系统：`std::chrono` 替代手写时间戳
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| 时间戳类型 | 手写 `Timestamp` 类（基于 `time_t` + 微秒） | `std::chrono::steady_clock::time_point` / `std::chrono::system_clock::time_point` |
-| 时间间隔 | 手写毫秒/微秒转换 | `std::chrono::milliseconds` / `std::chrono::seconds` 等强类型 Duration |
-| 定时器接口 | `runAt(Timestamp, ...)` | `runAt(time_point, ...)` / `runAfter(milliseconds, ...)` / `runEvery(milliseconds, ...)` |
+| 维度    | 原版 muduo                           | HyperMuduo                                                                               |
+|-------|------------------------------------|------------------------------------------------------------------------------------------|
+| 时间戳类型 | 手写 `Timestamp` 类（基于 `time_t` + 微秒） | `std::chrono::steady_clock::time_point` / `std::chrono::system_clock::time_point`        |
+| 时间间隔  | 手写毫秒/微秒转换                          | `std::chrono::milliseconds` / `std::chrono::seconds` 等强类型 Duration                       |
+| 定时器接口 | `runAt(Timestamp, ...)`            | `runAt(time_point, ...)` / `runAfter(milliseconds, ...)` / `runEvery(milliseconds, ...)` |
 
 **优势**：
+
 - `std::chrono` 提供编译期类型安全，避免单位混淆（毫秒 vs 微秒）
 - 支持字面量语法（如 `50ms`, `1s` via `using namespace std::chrono_literals`），代码更直观
 - `steady_clock` 保证单调性，不受系统时钟调整影响，适合定时器系统
@@ -122,13 +207,14 @@ loop.runEvery(1s, [&]() { /* 每秒执行 */ });
 
 #### 1.2 线程同步原语：`std::mutex` / `std::condition_variable` 替代手写封装
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| 互斥锁 | 手写 `MutexLock` + `MutexLockGuard` | `std::mutex` + `std::lock_guard<std::mutex>` / `std::unique_lock<std::mutex>` |
-| 条件变量 | 手写 `Condition` 类（封装 `pthread_cond_t`） | `std::condition_variable` |
-| 线程 ID 缓存 | 手写 `CurrentThread::tid()` + `__thread` 缓存 | `CurrentThread::getTid()` 封装（内部仍用 `__thread` 优化性能） |
+| 维度       | 原版 muduo                                  | HyperMuduo                                                                    |
+|----------|-------------------------------------------|-------------------------------------------------------------------------------|
+| 互斥锁      | 手写 `MutexLock` + `MutexLockGuard`         | `std::mutex` + `std::lock_guard<std::mutex>` / `std::unique_lock<std::mutex>` |
+| 条件变量     | 手写 `Condition` 类（封装 `pthread_cond_t`）     | `std::condition_variable`                                                     |
+| 线程 ID 缓存 | 手写 `CurrentThread::tid()` + `__thread` 缓存 | `CurrentThread::getTid()` 封装（内部仍用 `__thread` 优化性能）                            |
 
 **优势**：
+
 - 标准库同步原语经过充分测试和优化，无需担心底层实现细节
 - `std::lock_guard` / `std::unique_lock` 提供 RAII 风格的锁管理，避免死锁和遗漏解锁
 - `std::condition_variable` 支持 `wait_for` / `wait_until` 超时语义，无需手写超时计算
@@ -141,13 +227,14 @@ condition_.wait(lock, [&] { return loop_ != nullptr; });
 
 #### 1.3 日志系统：`spdlog` 替代手写 `Logging` 类
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| 日志实现 | 手写 `Logging` 类（支持流式语法、异步日志） | `spdlog` 库（`SPDLOG_INFO`, `SPDLOG_ERROR`, `SPDLOG_DEBUG` 等宏） |
-| 日志级别 | `TRACE/DEBUG/INFO/WARN/ERROR/FATAL` | 与 spdlog 的级别映射一致 |
-| 格式化 | 手写 `Format` 类 | `spdlog` 内置格式化 + `fmt::ptr()` 等扩展 |
+| 维度   | 原版 muduo                            | HyperMuduo                                                   |
+|------|-------------------------------------|--------------------------------------------------------------|
+| 日志实现 | 手写 `Logging` 类（支持流式语法、异步日志）         | `spdlog` 库（`SPDLOG_INFO`, `SPDLOG_ERROR`, `SPDLOG_DEBUG` 等宏） |
+| 日志级别 | `TRACE/DEBUG/INFO/WARN/ERROR/FATAL` | 与 spdlog 的级别映射一致                                             |
+| 格式化  | 手写 `Format` 类                       | `spdlog` 内置格式化 + `fmt::ptr()` 等扩展                            |
 
 **优势**：
+
 - `spdlog` 是业界公认的高性能 C++ 日志库，吞吐量可达数百万条/秒
 - 支持异步日志、多 sink、自定义格式化等高级功能，无需重新发明轮子
 - 流式语法改为格式化字符串（`SPDLOG_INFO("New connection from {}", addr)`），性能更优且类型安全
@@ -161,17 +248,18 @@ SPDLOG_ERROR("socket accept error: {}", std::system_category().message(errno));
 
 #### 1.4 其他标准库替代
 
-| 手写组件 | 标准库替代 | 使用场景 |
-|---------|-----------|---------|
-| `boost::any` / 手写 `Any` | `std::any` | `TcpConnection` 上下文存储 |
-| `boost::optional` | `std::optional` | 可选返回值的函数（如解码结果） |
-| `boost::string_view` | `std::string_view` | 字符串只读视图（避免拷贝） |
-| 手写 `CountDownLatch` | `std::condition_variable` + `std::mutex` 组合 | 线程同步等待（如 `EventLoopThread` 启动） |
-| 裸指针 + 手动 `delete[]` | `std::vector<char>` / `std::array<char, N>` | Buffer 底层存储 |
-| `boost::function` | `std::function` | 所有回调类型擦除 |
-| 手写线程封装 | `std::thread` | `EventLoopThread` 内部线程创建 |
+| 手写组件                    | 标准库替代                                       | 使用场景                           |
+|-------------------------|---------------------------------------------|--------------------------------|
+| `boost::any` / 手写 `Any` | `std::any`                                  | `TcpConnection` 上下文存储          |
+| `boost::optional`       | `std::optional`                             | 可选返回值的函数（如解码结果）                |
+| `boost::string_view`    | `std::string_view`                          | 字符串只读视图（避免拷贝）                  |
+| 手写 `CountDownLatch`     | `std::condition_variable` + `std::mutex` 组合 | 线程同步等待（如 `EventLoopThread` 启动） |
+| 裸指针 + 手动 `delete[]`     | `std::vector<char>` / `std::array<char, N>` | Buffer 底层存储                    |
+| `boost::function`       | `std::function`                             | 所有回调类型擦除                       |
+| 手写线程封装                  | `std::thread`                               | `EventLoopThread` 内部线程创建       |
 
 **设计原则**：
+
 - **标准库优先**：C++17/20 标准库已覆盖 muduo 时代 90% 以上的 Boost 依赖
 - **不重复造轮子**：对于日志、测试等通用基础设施，优先选择成熟的第三方库
 - **保持 muduo 核心设计不变**：Reactor 模式、事件分发、连接管理等架构决策与原版一致，仅在底层工具层面现代化
@@ -187,6 +275,7 @@ SPDLOG_ERROR("socket accept error: {}", std::system_category().message(errno));
 这是本项目与原版差异最大的模块。
 
 **原版 muduo** 使用 `std::set<Timer*>`（红黑树）：
+
 1. 按过期时间自动排序，最早过期的 Timer 位于 `begin()`
 2. 取消定时器时 O(log n) 删除任意节点
 3. 指针 / 迭代器在插入 / 删除后不失效
@@ -210,48 +299,49 @@ if (auto it = timers_.find(timer_sequence); it != timers_.end()) {
 }
 ```
 
-| 维度 | muduo（红黑树） | HyperMuduo（最小堆 + 惰性删除） |
-|------|----------------|-------------------------------|
-| 获取最早定时器 | O(log n) `begin()` | O(1) `top()` |
-| 插入 | O(log n) | O(log n) |
-| 取消 | O(log n) 直接删除 | O(1) 仅删哈希表，堆中惰性处理 |
-| "幽灵条目" | 无 | 有（到期时自动弹出，不会无限堆积） |
-| 内存布局 | 节点分散，指针跳转 | `std::vector` 连续存储，缓存友好 |
+| 维度      | muduo（红黑树）         | HyperMuduo（最小堆 + 惰性删除）  |
+|---------|--------------------|-------------------------|
+| 获取最早定时器 | O(log n) `begin()` | O(1) `top()`            |
+| 插入      | O(log n)           | O(log n)                |
+| 取消      | O(log n) 直接删除      | O(1) 仅删哈希表，堆中惰性处理       |
+| "幽灵条目"  | 无                  | 有（到期时自动弹出，不会无限堆积）       |
+| 内存布局    | 节点分散，指针跳转          | `std::vector` 连续存储，缓存友好 |
 
 ### 3. Poller 实现
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| IO 多路复用 | 默认 `epoll`（`EPollPoller`），`poll` 为备选 | 当前仅 `poll` 版本 |
-| Channel 映射 | `std::map<int, Channel*>` | `std::unordered_map<int, Channel*>`（O(1)） |
+| 维度         | 原版 muduo                             | HyperMuduo                                |
+|------------|--------------------------------------|-------------------------------------------|
+| IO 多路复用    | 默认 `epoll`（`EPollPoller`），`poll` 为备选 | Linux 默认 `epoll`，可通过环境变量切换为 `poll`        |
+| Channel 映射 | `std::map<int, Channel*>`            | `std::unordered_map<int, Channel*>`（O(1)） |
 
 ### 4. Channel 事件管理
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| 事件更新 | 外部显式调用 `Channel::update()` → `EventLoop::updateChannel()` | `Channel::notifyLoop()` 内部自动回写，减少调用方心智负担 |
-| 事件开关命名 | `enableReading()/disableReading()` | `listenTillReadable()/ignoreReadable()`（更具描述性） |
-| 事件常量 | 直接使用 `POLLIN/POLLOUT` 宏 | 封装为 `kReadEvent/kWriteEvent/kNoneEvent` 常量 |
+| 维度     | 原版 muduo                                                  | HyperMuduo                                     |
+|--------|-----------------------------------------------------------|------------------------------------------------|
+| 事件更新   | 外部显式调用 `Channel::update()` → `EventLoop::updateChannel()` | `Channel::notifyLoop()` 内部自动回写，减少调用方心智负担       |
+| 事件开关命名 | `enableReading()/disableReading()`                        | `listenTillReadable()/ignoreReadable()`（更具描述性） |
+| 事件常量   | 直接使用 `POLLIN/POLLOUT` 宏                                   | 封装为 `kReadEvent/kWriteEvent/kNoneEvent` 常量     |
 
 ### 5. Buffer 设计
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
-| `readv` 临时缓冲区 | 裸 `char extrabuf[65536]` 数组 | `std::array<char, 65536>`（类型安全） |
-| `retrieveAll()` 行为 | 重置游标到初始位置 | 明确重置为 `CHEAP_PREPEND` 位置 |
+| 维度                 | 原版 muduo                    | HyperMuduo                      |
+|--------------------|-----------------------------|---------------------------------|
+| `readv` 临时缓冲区      | 裸 `char extrabuf[65536]` 数组 | `std::array<char, 65536>`（类型安全） |
+| `retrieveAll()` 行为 | 重置游标到初始位置                   | 明确重置为 `CHEAP_PREPEND` 位置        |
 
 ### 6. TcpConnection 设计
 
-| 维度 | 原版 muduo | HyperMuduo |
-|------|-----------|------------|
+| 维度   | 原版 muduo                     | HyperMuduo                         |
+|------|------------------------------|------------------------------------|
 | 输出缓冲 | `Buffer outputBuffer_`（直接成员） | `std::unique_ptr<Buffer>`（构造时即初始化） |
-| 输入缓冲 | `Buffer inputBuffer_`（直接成员） | `std::unique_ptr<Buffer>`（构造时即初始化） |
+| 输入缓冲 | `Buffer inputBuffer_`（直接成员）  | `std::unique_ptr<Buffer>`（构造时即初始化） |
 
 ### 7. Protobuf 编解码链路
 
 编码格式与原版完全一致（`len + nameLen + typeName + payload + checksum`，Adler-32 校验，64 MB 上限）。
 
 HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
+
 - **`Codec`**：纯静态编解码方法（长度前缀、校验、类型名处理）
 - **`Dispatcher`**：基于 `google::protobuf::Descriptor*` 的回调注册与分发
 - **`ProtobufHandler`**：组合 `Codec` + `Dispatcher`，循环解码并分发
@@ -277,11 +367,9 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 
 ---
 
-## TODO / 进度清单（持续维护）
+## 功能清单
 
-> 说明：
-> - `[x]` 已完成；`[ ]` 未完成。
-> - 实现完一个点后可随时同步勾选更新。
+> 以下为已实现并经过测试的功能模块。
 
 ### A. 工程基础
 
@@ -290,8 +378,6 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 - [x] 增加根目录 `.gitignore`（忽略构建产物、IDE 配置、本地缓存）
 - [x] 配置基础格式化文件（`.clang-format`）
 - [x] 增加测试框架（GoogleTest 或等价方案）
-- [ ] 增加 CI（至少包含构建检查）
-- [ ] 增加静态检查（`clang-tidy`/`cppcheck`）
 
 ### B. Reactor 主循环（EventLoop / Channel / Poller）
 
@@ -315,16 +401,15 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 - [x] 增加连接关闭回调（`closeCallback`）→ 在 TcpConnection 层面实现
 - [x] 增加防悬挂策略（`tie` 机制）
 
-#### B3. Poller（poll 版本）
+#### B3. Poller（poll/epoll 双模式）
 
 - [x] `poll()` 封装与超时返回
 - [x] `updateChannel()` 新增 / 更新逻辑
 - [x] `fillActiveChannels()` 活跃事件收集
 - [x] 线程归属校验
 - [x] `removeChannel()` 与 channel 生命周期闭环
-- [ ] 优化 `fd < 0` 的禁用项处理和映射一致性
-- [ ] 增加参数与状态合法性断言
-- [ ] 预留后续 `epoll` 版本抽象
+- [x] Epoller 实现（epoll 版本，Linux 默认）
+- [x] 环境变量切换支持（`HYPERMUDUO_USE_POLL=1`）
 
 ### C. 网络核心组件
 
@@ -414,7 +499,8 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 - [x] TcpServer 多线程模式（连接分配到 Worker 线程）
 - [x] 跨线程连接删除（`removeConnection` + `removeConnectionInLoop`）
 - [x] 跨线程数据发送（`conn->send()` 自动判断线程并投递）
-- [x] 多线程测试（14 个测试：线程分配、Echo 服务、高并发、跨线程发送、回调验证、Context 安全、写完成回调、50 连接压力测试、1MB 大数据传输、广播、快速断开、TCP_NODELAY、KeepAlive）
+- [x] 多线程测试（14 个测试：线程分配、Echo 服务、高并发、跨线程发送、回调验证、Context 安全、写完成回调、50 连接压力测试、1MB
+  大数据传输、广播、快速断开、TCP_NODELAY、KeepAlive）
 
 ### D. Protobuf 编解码链路
 
@@ -424,8 +510,6 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 - [x] 解码：长度 / 校验 / 类型名合法性检查
 - [x] 支持不完整包（`INCOMPLETE`）状态返回
 - [x] 支持按类型名动态创建消息对象
-- [ ] 增加解码错误分级后的连接处理策略（丢包 / 断连）
-- [ ] 覆盖粘包 / 拆包 / 畸形包的系统化测试
 
 #### D2. Dispatcher / Handler
 
@@ -433,19 +517,11 @@ HyperMuduo 将原版的 `ProtobufCodec` 拆分为三个职责单一的组件：
 - [x] 默认回调兜底逻辑
 - [x] `ProtobufHandler` 循环解码并分发
 - [x] `Send()` 写入连接输出缓冲
-- [ ] 对接真实网络读写路径（从 `TcpConnection` 收发）
-- [ ] 增加端到端示例（Echo 或 RPC 风格最小 demo）
 
-### E. 文档与学习映射
+### E. 文档
 
-- [x] 完成项目 README 初版
+- [x] 完成项目 README
 - [x] 增加"与原版 muduo 设计差异"详细对比
-- [ ] 增加架构说明（线程模型、Reactor 流程图）
-- [ ] 增加"书籍章节 → 代码模块"映射表
-- [ ] 增加常见问题与踩坑记录
-
----
-
 
 ## 致谢
 

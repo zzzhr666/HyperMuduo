@@ -3,13 +3,17 @@
 #include <cassert>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
-#include <sys/poll.h>
 #include <sys/eventfd.h>
+#include <sys/poll.h>
 #include <sys/signal.h>
 
 #include "Channel.hpp"
 #include "Poller.hpp"
 #include "TimerQueue.hpp"
+#if defined(__linux__)
+#include "Epoller.hpp"
+#endif
+
 
 namespace {
     thread_local hyperMuduo::net::EventLoop* t_current_thread_loop;
@@ -24,7 +28,7 @@ namespace {
     }
 
     class IgnoreSigPipe {
-        public:
+    public:
         IgnoreSigPipe() {
             struct sigaction sa;
             sa.sa_handler = SIG_IGN;
@@ -34,7 +38,44 @@ namespace {
 
         }
     };
+
     IgnoreSigPipe ignore_sigpipe;
+
+
+    // =========================================================================
+    // Poller 选择策略
+    // =========================================================================
+    // 默认行为：
+    //   - Linux 平台：使用 Epoller (epoll)
+    //   - 其他平台：使用 Poller (poll)
+    //
+    // 切换方法：
+    //   在 Linux 上强制使用 poll：
+    //     export HYPERMUDUO_USE_POLL=1
+    //     ./your_application
+    //
+    //   恢复使用 epoll：
+    //     unset HYPERMUDUO_USE_POLL
+    //     ./your_application
+    //
+    //   或者单次运行指定：
+    //     HYPERMUDUO_USE_POLL=1 ./your_application
+    // =========================================================================
+
+    std::unique_ptr<hyperMuduo::net::PollerBase> getPoller(hyperMuduo::net::EventLoop& loop) {
+#if defined(__linux__)
+        if (const char* env = std::getenv("HYPERMUDUO_USE_POLL"); env && std::string(env) == "1") {
+            SPDLOG_INFO("Using poll poller(forced by env).");
+            return std::make_unique<hyperMuduo::net::Poller>(loop);
+        }
+        SPDLOG_INFO("Using epoll poller (default on Linux)");
+        return std::make_unique<hyperMuduo::net::Epoller>(loop);
+#else
+        SPDLOG_INFO("Using poll poller(default on platform other than Linux)");
+        return std::make_unique<hyperMuduo::net::Poller>(loop);
+#endif
+
+    }
 }
 
 
@@ -43,7 +84,7 @@ hyperMuduo::net::EventLoop::EventLoop()
       quit_{true},
       is_processing_tasks_(false),
       thread_id_{CurrentThread::getTid()},
-      poller_{std::make_unique<Poller>(*this)},
+      poller_(getPoller(*this)),
       timer_queue_(std::make_unique<TimerQueue>(*this)),
       wakeup_fd_(create_eventfd()),
       wakeup_channel_(std::make_unique<Channel>(*this, wakeup_fd_)) {
@@ -85,7 +126,7 @@ void hyperMuduo::net::EventLoop::loop() {
             executePendingTasks();
         }
     }
-    SPDLOG_TRACE("EventLoop {} stop looping.",fmt::ptr(this));
+    SPDLOG_TRACE("EventLoop {} stop looping.", fmt::ptr(this));
     is_running_ = false;
 }
 
